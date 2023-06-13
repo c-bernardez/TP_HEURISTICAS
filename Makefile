@@ -1,9 +1,8 @@
 CC = g++
 CFLAGS = -std=c++17
-SRC = main.cpp
+SRC = main.cpp gap_instance.cpp 
 OBJ = $(SRC:.cpp=.o)
-EXEC = gap_simulator
-
+EXEC = gap_simulator 
 all: $(EXEC)
 
 $(EXEC): $(OBJ)
