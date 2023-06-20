@@ -1,8 +1,8 @@
 #include <limits>
 #include <chrono>
-#include "greedy_local.h"
+#include "worst_fit.h"
 
-int dmax(int j, const std::vector<std::vector<int> >& demandas){
+int dmax_2(int j, const std::vector<std::vector<int> >& demandas){
     int max = 0;
     for(int i=0;i<demandas.size();i++){
         if(demandas[i][j]>max){
@@ -11,13 +11,13 @@ int dmax(int j, const std::vector<std::vector<int> >& demandas){
     }
     return max;
 }
-greedyLocal::greedyLocal(){}
+worstFit::worstFit(){}
 
-greedyLocal::greedyLocal(gapInstance &instancia){
+worstFit::worstFit(gapInstance &instancia){
     this->_instance = instancia;
 }
 
-void greedyLocal::solve(){
+void worstFit::solve(){
     gapSolution solucion(this->_instance.m, this->_instance.n); //creo la instancia de solucion a partir del a instancia de asignacion
     std::vector<std::vector<int> > dist = this->_instance.costos;
     std::vector<std::vector<int> > demanda = this->_instance.demandas;
@@ -31,20 +31,30 @@ void greedyLocal::solve(){
 
     //auto start = std::chrono::high_resolution_clock::now();
     
-    for(int j=0; j<this->_instance.n; j++){
-        for(int i=0; i<this->_instance.m; i++){
-            if(dist[i][j]<min_demand  && capacidad[i]-demanda[i][j] >=0){
-                v = j; 
-                d = i;
-                min_demand = dist[i][j];
+    for (int i = 0; i < this->_instance.m; i++) {
+        int capacidad_remanente = capacidad[i];
+        
+        while (capacidad_remanente > 0) {
+            int v = -1;
+            int d = -1;
+            int min_demand = std::numeric_limits<int>::max();
+            
+            for (int j = 0; j < this->_instance.n; j++) {
+                if (solucion.get_assigned_depo(j) == -1 && capacidad_remanente >= demanda[i][j] && dist[i][j] < min_demand) {
+                    v = j;
+                    d = i;
+                    min_demand = dist[i][j];
+                }
+            }
+            
+            if (v != -1) {
+                solucion.assign(v, d);
+                capacidad_remanente -= demanda[d][v];
+                dist_total += dist[d][v];
+            } else {
+                break; // No more vendors can fit in the deposit
             }
         }
-        if (v != -1) {
-            solucion.assign(v, d);
-            capacidad[d] -= demanda[d][v];
-            dist_total = dist[d][v];
-        } 
-        min_demand = std::numeric_limits<int>::max();
     }
     // auto stop = std::chrono::high_resolution_clock::now();
     // auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
@@ -53,7 +63,7 @@ void greedyLocal::solve(){
     int penalizacion = 0;
     for(int i = 0; i<this->_instance.n; i++){
         if(solucion.get_assigned_depo(i) == -1){
-            penalizacion += 3*dmax(i, demanda);
+            penalizacion += 3*dmax_2(i, demanda);
             dist_total += penalizacion;
             //std::cout << i << std::endl;
         }
@@ -65,10 +75,10 @@ void greedyLocal::solve(){
     // std::cout << "greedy vendedores" << std::endl  
 } 
     
-int greedyLocal::getCosto() const{
+int worstFit::getCosto() const{
     return this->_costo_asignacion;
 }
 
-gapSolution greedyLocal::getSolution() const{
+gapSolution worstFit::getSolution() const{
     return this->_solution;
 }

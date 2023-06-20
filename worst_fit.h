@@ -1,5 +1,5 @@
-#ifndef GREEDY_LOCAL_H
-#define GREEDY_LOCAL_H
+#ifndef WORST_FIT_H
+#define WORST_FIT_H
 
 #include<tuple>
 #include<vector>
@@ -10,11 +10,11 @@
 #include "gap_instance.h"
 #include "gap_solution.h"
 
-class greedyLocal
+class worstFit
 {
 	public:
-        greedyLocal(); 
-        greedyLocal(gapInstance &instancia);
+        worstFit(); 
+        worstFit(gapInstance &instancia);
 
         void solve(); // encuentra el costo total de la asignacion y la asignacion en si
         int getCosto() const; // devuelve el costo total de la asignacion
