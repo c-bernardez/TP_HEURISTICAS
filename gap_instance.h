@@ -2,7 +2,6 @@
 #define GAP_INSTANCE_H
 
 #include<vector>
-#include<tuple>
 #include<string>
 #include<fstream>
 #include<iostream>
