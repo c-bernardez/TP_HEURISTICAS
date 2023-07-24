@@ -7,8 +7,10 @@
 #include<fstream>
 #include<iostream>
 #include<sstream>
-#include "gap_instance.h"
-#include "gap_solution.h"
+#include "../gap/gap_instance.h"
+#include "../gap/gap_solution.h"
+#include "../gap/gap_cost.h"
+#include "../auxiliares/auxiliares.h"
 
 class worstFit
 {
@@ -17,13 +19,16 @@ class worstFit
         worstFit(gapInstance &instancia);
 
         void solve(); // encuentra el costo total de la asignacion y la asignacion en si
-        int getCosto() const; // devuelve el costo total de la asignacion
+        void calculate();
+        int getCostoFromWorstFit() const; // devuelve el costo total de la asignacion
         gapSolution getSolution() const; // devuelve la asignacion vendedor - deposito
+        double getTime() const; // devuelve el tiempo que tarda la asignación
         
 	private:
         gapInstance _instance; // almacena la instancia
         gapSolution _solution; // almacena la asignacion
         int _costo_asignacion; // almacena el costo total de la asignacion
+        double _tiempo; // almacena el tiempo de cómputo
         
 
 

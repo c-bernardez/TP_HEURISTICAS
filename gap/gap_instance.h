@@ -18,7 +18,7 @@ class gapInstance
         int m; // numero de depositos
         int n; // numero de vendedores
         
-        std::vector<std::vector<int> > costos; // costo de asignarle al deposito i el vendedor j
+        std::vector<std::vector<int> > costos; // costo de asignarle al deposito i el vendedor j (distancia a recorrer de j a i)
         std::vector<std::vector<int> > demandas; // recursos consumidos por asignarle al deposito i el vendedor j (demanda del vendedor j para el deposito i)
 
         std::vector<int> capacidades; // capacidad del deposito i

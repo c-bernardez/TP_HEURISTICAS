@@ -1,0 +1,461 @@
+---
+title: "TP2: Logística centralizada de primera milla"
+author: "Bernardez Camila, Giménez Costa María, Oliva Micaela"
+date: "2023-07-20"
+output: pdf_document
+fig_width: 6
+fig_height: 4
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(fig.width=6, fig.height=4) 
+```
+
+```{r}
+library(wesanderson)
+library(RColorBrewer)
+n <- 10
+
+h1 <- hcl.colors(n, palette = "Dynamic")
+h2 <- hcl.colors(n, palette = "Earth")
+h3 <- hcl.colors(n, palette = "Berlin")
+h4 <- hcl.colors(n, palette = "Fall")
+h5 <- hcl.colors(n, palette = "Sunset")
+
+```
+
+
+```{r}
+colors <- rev(wes_palette("Zissou1", 2, type = "continuous"))
+```
+
+# Introducción al problema y la decisión
+
+En este trabajo nos centramos en intentar reducir costos operativos en terminos logisticos para entregar los paquetes hasta el punto de recepcion
+
+En este trabajo nos centramos decidir como proveer servicios para reducir los costos operativos y logísticos a vendedores que son responsables de la entrega de paquetes hasta un punto de recepción de la red (llamada “la primera milla”) para facilitar la operatoria. 
+Para esto, debemos pensar formas para que cada vendedor elija eficientemente en que punto de consolidación (depósito) almacenar los ítems de su respectivo comercio. Buscamos encontrar un modelo de decisión que nos permita saber qué vendedor debe utilizar que deposito de forma que se utilice de manera eficaz la capacidad de almacenamiento de la red.
+
+En principio, tomamos como métrica de éxito de una asignación, que cumpla con las capacidades máximas de cada depósito, la minimización de la distancia total recorrida por los vendedores.
+
+Este problema lo vamos a modelar mediante el Problema de Asignación Generalizada (GAP) en el que contamos con $N$ vendedores y $M$ depósitos con capacidad máxima de recepción.
+
+Para esto tenemos una matriz de costos, que son las distancias de cada vendedor a un depósito, una matriz de demandas de cada vendedor y otra matriz que posee las capacidades de cada depósito. 
+
+Aparte de esto, como cabe la posibilidad de que no todos los vendedores logren ser asignados a un depósito, consideramos un nuevo depósito cuya capacidad es infinita (INT_MAX) y el costo de cada vendedor para ser asignado a ese depósito será 3 veces su distancia máxima en concepto de penalización. Dado que la capacidad de este depósito es infinita, es irrelevante cuanto le demande cada vendedor, pero por simplicidad decidimos fijar todas estas demandas en cero. 
+
+Debido a que este problema es "difícil" en términos computacionales, vamos a implementar heurísticas constructivas, operadores de búsqueda local y metaheurísticas.
+
+# Descripción del modelo propuesto 
+
+**Heurísticas** 
+
+A continuación vamos a describir las heurísticas seleccionadas: 
+
+Inicialmente, planteamos una implementación *greedy* en la que le asignamos a un vendedor un depósito que tenga suficiente capacidad remanente para la cantidad de demanda de dicho vendedor para ese depósito. Notar que para cada vendedor no siempre va a haber un depósito en el que quepa. Debido a esto, tenemos un depósito extra al que asignamos a vendedores que no fueron asignados a ningún depósito. Cuando ocurra esto, se asumirá una penalización de 3xdmax (distancia máxima recorrida por un vendedor). 
+
+La segunda heurística, basada fuertemente en la penalización impuesta, es llamada "Worst fit". Si bien, lógicamente, tiene más sentido asignar vendedores a depósitos más cercanos, elegimos asignarle a un depósito los vendedores más lejanos, el que más costo tenga, hasta agotar capacidad. Esta elección fue debido a la penalización, ya que ahora es de esperarse que los vendedores que queden sin asignar van a tener un dmax más chico y esto va a mejorar en nuestro cálculo de costo total, más que nada para instancias grandes. 
+
+
+**Búsquedas locales** 
+
+Para estas 2 heurística, implementamos 2 operadores de búsqueda local, swap y relocate. 
+
+**Swap**
+
+Para el swap, dada una solución factible s, consideramos dos vendedores distintos $j_1$ y $j_2$ $\in$ *s* asignados a los depósitos $i_1$ $\neq$ $i_2$.
+
+  * remover $j_1$ de $i_1$ e insertarlo en $i_2$;
+
+  * remover $j_2$ de $i_2$ e insertarlo en $i_1$;
+
+Aplicar estos pasos para todos los vendedores $j_1$, $j_1$ $\in$ *s* asignados a depósitos distintos.
+
+Definimos una solucion *s'* en el operador swap es una mejora de *s* si : 
+
+  * $dist_{i_2j_1} \;+\; dist_{i_1j_2}$ < $dist_{i_1j_1} \;+\; dist_{i_2j_2}$,
+  * $demanda_{i_2j_1}$ $\leq$ $capacidad \; remanente_{i_2}  \;+\; demanda_{i_2j_2}$ y
+  * $demanda_{i_1j_2}$ $\leq$ $capacidad \; remanente_{i_1}  \;+\; demanda_{i_1j_1}$ 
+
+**Relocate**
+
+Para el relocate, dada una solución factible s, consideramos un vendedor $j$ $\in$ *s* asignado al depósito $i$.
+
+Considerar un depósito $k$ $\neq$ $i$:
+
+  * remover $j$ de su ubicacion actual;
+
+  * insertar $j$ en el depósito $k$;
+
+Aplicar estos pasos para todos los vendedores $j$ $\in$ *s* y los depósitos distintos al actual.
+
+Definimos una solucion *s'* en el operador relocate es una mejora de *s* si : 
+
+  * $dist_{kj}$ < $dist_{ij}$ y 
+  * $demanda_{kj}$ $\leq$ $capacidad \; remanente_{k}$
+
+**Metaheurísticas**
+
+Como estamos buscando la minimización de la distancia total recorrida por los vendedores, nos gustaría escapar de óptimos locales, y llegar a óptimos globales, explorando mejor el espacio de soluciones y mejorando el costo total. Para esto, vamos a utilizar la metaheuristica GRASP (Greedy Randomized Adaptive Search Procedure) eligiendo como algoritmo goloso el *greedy* que implementamos y en lugar de elegir la mejor opción local, definimos una lista restringida de candidatos (RCL) que sea el 40% de los depósitos más cercano. El depósito que se incorpora en la construcción de la solución, se selecciona aleatoriamente dentro del RCL. 
+
+Luego de obtener una solución factible, aplicamos el algoritmo de búsqueda local con el best-improvement. Para considerar los dos vecindarios de los operadores, los exploramos de manera secuencial, primero aplicamos relocate hasta llegar a un mínimo local y luego sobre esa solución aplicamos swap.
+
+# Consideraciones generales respecto a la implementación del modelo, incluyendo dificultades que encontramos
+Para implementar modelo decidimos guardar las distancias y demandas como $\texttt{vector<vector<int>>}$, donde cada "fila" (subvector) es un depósito, y cada "columna" (elemento de los subvectores) es un vendedor. Para las capacidades consideramos un $\texttt{vector<int>}$. 
+
+A pesar de que en las instancias reales las demandas de un vendedor son las mismas para cada depósito, y las capacidades de las instancias provistas son siempre las mismas, esto no se asume en el código. 
+
+Como en las instancias reales los costos (o distancias) son $\texttt{floats}$ con una cifra decimal, multiplicamos siempre los costos por 10, y luego en los cálculos los volvemos a dividir por 10.0, para luego convertirlos de vuelta en $\texttt{int}$. Decidimos manejar números enteros porque es el tipo de datos de la mayoría de los valores y además resultan más cómodos.
+
+Queremos mencionar algunos aspectos del código que creemos pueden mejorarse, pero por falta de tiempo, ingenio o ambos no pudimos implementar.
+
+  * En primer lugar creemos que podríamos reducir un poco el tiempo de ejecución si cuando computamos el GRASP no buscamos en cada *k* iteración el RCL de depósitos más cercanos, ya que siempre van a ser los mismos (lo que cambia es cuál elegimos). *Anteriormente también habíamos mencionado que se podía evitar crear una nueva asignación temp en cada búsqueda local, pero para esta reentrega conseguimos implementarlo y mejoramos significativamente el tiempo de ejecución*.
+  * En segundo lugar somos conscientes de que podríamos deshacernos de ciertos ciclos, mejorando así la complejidad, en las clases de $\texttt{worstFit}$ y $\texttt{GRASP}$. En el segundo no es necesario iterar por cada vendedor todos los depósitos *rcl_size* cantidad de veces, sino que podríamos ordenar el vector de distancias en orden creciente *a priori*, pero el problema es que debemos ordenar también el de demandas, y perdemos las posiciones originales de los vendedores. Algo similar ocurre con $\texttt{worstFit}$, podríamos ordenarlo en orden decreciente.
+
+# Resultados obtenidos en la experimentación
+
+La expreimentación se realizó en base a todas las instancias de tipo *a*, *b* y la instancia real, y 5 instancias representativas de la instancia *e*. El análisis del $\texttt{GRASP}$ se realizó sobre una instancia de cada tipo, incluyendo la real (originalmente esto fue por falta de tiempo, pero decidimos dejarlo así porque creemos que es suficiente para el análisis que realizamos más adelante).
+
+**Diferencia en la distancia total computada por las heurísticas**
+
+Como podría intuirse, la heurística *greedy* es considerablemente mejor, ya que busca elegir a cada paso el depósito más cercano a cada vendedor, mientras que el otro elige los más lejanos de manera contraintuitiva (1).
+
+Sin embargo, si observamos estos resultados para las instancias de tipo *e*, el $\texttt{worstFit}$ es la mejor opción. Habiendo observado los archivos de estas instancias, notamos que hay mayor variación en los costos que en otros archivos. Por ejemplo, en el archivo *a05100* todas las distancias parecen rondar el 50, mientras que en el *e10400* hay distancias de menos de 10 y otras de casi 1000. Esto ocasiona que si elegimos los más cercanos, la penalización sobre los más lejanos sea mucho mayor, por ejemplo 3000 contra 30 en el ejemplo comentado (2). *Esto es teniendo en cuenta la penalización propuesta en el archivo original y con la que trabajamos a lo largo del TP*.
+
+Aunque como vemos este método es eficiente para encontrar una mejor distancia total, es posible que la cantidad de vendedores que quedaron desasignados sea mayor. Computar ese dato quedará para un trabajo futuro.
+
+
+
+```{r,fig.align = "center"}
+csv_greedy <- read.csv("analisis/greedy_analisis.csv", header = TRUE, sep = ",")
+# csv_greedy
+# funciones <- csv[2:7]
+# gap <- csv[8:10]
+# 
+# greedy_a <- csv_greedy[1:6, ]
+# greedy_b <- csv_greedy[7:12, ]
+# greedy_e <- csv_greedy[13:17, ]
+# greedy_real <- csv_greedy[18, ]
+
+
+csv_wf <- read.csv("analisis/worstFit_analisis.csv", header = TRUE, sep = ",")
+
+greedy_chicos <- rbind(csv_greedy[1:12,], csv_greedy[18,])
+greedy_grandes <- csv_greedy[13:17, ]
+
+wf_chicos <- rbind(csv_wf[1:12,], csv_wf[18,])
+wf_grandes <- csv_wf[13:17, ]
+
+
+Tamanios1 <- c("a-5:100", "a-5:200", "a-10:100", "a-10:200", "a-20:100", "a-20:200",
+              "b-5:100", "b-5:200", "b-10:100", "b-10:200", "b-20:100", "b-20:200",
+              "real")
+
+Tamanios2 <- c("e-05:200", "e-15:900", "e-10:400", "e-60:900", "e-40:1600")
+
+# 1 - chicos
+
+barplot_data <- rbind(greedy_chicos$dist_total, wf_chicos$dist_total)
+
+barplot(barplot_data, beside=TRUE, col = c(colors[1], colors[2]),
+        names.arg = Tamanios1, legend.text = TRUE,
+        xlab = "Instancias", ylab = "Distancia total (en km)",
+        main = "Distancia total para ambas heurísticas (1)",
+        ylim = c(0, 1.2 * max(barplot_data)), cex.lab=0.7, cex.axis=0.7, cex.main = 1.1, cex.names=0.3)
+
+legend("topleft", legend = c("distancia c/ el Greedy", "distancia c/ el WorstFit"), col= c(colors[1], colors[2]), lwd = 2, cex=0.7)
+```
+
+```{r,fig.align = "center"}
+# 2 - grandes
+barplot_data2 <- rbind(greedy_grandes$dist_total, wf_grandes$dist_total)
+
+barplot(barplot_data2, beside=TRUE, col = c(colors[1], colors[2]),
+        names.arg = Tamanios2, legend.text = TRUE,
+        xlab = "Instancias", ylab = "Distancia total (en km)",
+       main = "Distancia total para ambas heurísticas (2)",
+        ylim = c(0, 1.2 * max(barplot_data2)), cex.lab=0.7, cex.axis=0.7, cex.main = 1.1, cex.names=0.5)
+
+legend("topleft", legend = c("distancia c/ el Greedy", "distancia c/ el WorstFit"), col= c(colors[1], colors[2]),, lwd = 2, cex=0.7)
+
+```
+
+
+**Diferencia en la distancia total mejorada por las búsquedas locales**
+
+Para probar cuánto podemos mejorar la solución original encontrada por las heurísticas probamos ambos operadores por separado hasta llegar a un óptimo local.
+\
+
+**Greedy**
+
+El operador relocate no logró ninguna mejora para esta heurística en ninguna de las instancias probadas. Sin embargo, como el greedy elige siempre el depósito más cercano a cada vendedor siempre que haya suficiente capacidad remanente, era de esperarse que no hubiera mejora, porque sino lo hubiera elegido en la solución inicial.
+
+El operador swap, en cambio, sí logró mejoras más considerables. Para las instancias representativas mostradas a continuación las mejoras relativas son de $0.5\%$, $11.17\%$, $14.28\%$ y $2.53\%$, respectivamente.\
+
+
+```{r}
+# greedy acotado dist relocate y dist swap
+library(knitr)
+
+greedy_acotado<- rbind(csv_greedy[1,], csv_greedy[10,], csv_greedy[15,],  csv_greedy[18,])
+# Create a data frame with three columns and six rows
+data <- data.frame(
+  instancia = c("","a-05:100", "b-10:200", "e-10:400", "real"),
+  dist_greedy = c(1, greedy_acotado$dist_total[1], greedy_acotado$dist_total[2], greedy_acotado$dist_total[3], greedy_acotado$dist_total[4]),
+  dist_relocate = c(1,greedy_acotado$dist_relocate[1], greedy_acotado$dist_relocate[2], greedy_acotado$dist_relocate[3], greedy_acotado$dist_relocate[4]),
+  dist_swap = c(1,greedy_acotado$dist_swap[1], greedy_acotado$dist_swap[2], greedy_acotado$dist_swap[3], greedy_acotado$dist_swap[4])
+)
+colnames(data)[1] <- ""
+data <- data[-1, ]
+
+# Use knitr to generate a table
+kable(data, row.names = FALSE)
+
+```
+
+
+**WorstFit**
+
+Ambos operadores resultan en mejoras significativas para las soluciones encontradas con el método de *worst fit*, aunque cuál es más efectiva depende de cada instancia, y en algunos casos el relocate sigue sin dar ninguna mejora. Por ejemplo, para las instancias representativas vemos que para *a-05100* y *b-10200* es preferible el swap, y para *e-10:400* y la instancia real el relocate, además de que para *b-10200* el relocate directamente no hace nada.\
+
+```{r}
+# greedy acotado dist relocate y dist swap
+library(knitr)
+
+wf_acotado<- rbind(csv_wf[1,], csv_wf[10,], csv_wf[15,],  csv_wf[18,])
+# Create a data frame with three columns and six rows
+data <- data.frame(
+  instancia = c("","a-05:100", "b-10:200", "e-10:400", "real"),
+  dist_wf = c(1, wf_acotado$dist_total[1], wf_acotado$dist_total[2], wf_acotado$dist_total[3], wf_acotado$dist_total[4]),
+  dist_relocate = c(1,wf_acotado$dist_relocate[1], wf_acotado$dist_relocate[2], wf_acotado$dist_relocate[3], wf_acotado$dist_relocate[4]),
+  dist_swap = c(1,wf_acotado$dist_swap[1], wf_acotado$dist_swap[2], wf_acotado$dist_swap[3], wf_acotado$dist_swap[4])
+)
+colnames(data)[1] <- ""
+data <- data[-1, ]
+
+# Use knitr to generate a table
+kable(data, row.names = FALSE)
+
+```
+
+Creemos que tiene sentido que en varios casos el relocate logre mejorar la solución encontrada con esta heurística, y que las mejoras con ambos sean más notorias que las mejoras sobre el *greedy*, porque ya habíamos mencionado antes que esta heurística puede encontrar soluciones muy malas (en especial a instancias pequeñas), por lo que queda mucho lugar para mejoras. Sin embargo, nos resulta extraño que en algunos casos el relocate no funcione, y no le encontramos una explicación como al relocate sobre el *greedy*.\
+
+
+**Diferencia en el tiempo para ambas heurísticas y por los operadores de búsqueda local**
+
+En cuestiones de tiempo, el $\texttt{worstFit}$ resulta peor en la teoría, pero en la práctica no hay mucha diferencia. En la tabla (4) del apéndice podemos observar que la instancia que más tardó en computar el $\texttt{worstFit}$ tuvo un tiempo de 34071 microsegundos, o 0.034 segundos.
+
+El operador relocate es el más rápido de los dos, lo cuál es esperable porque tiene que considerar $nxm$ combinaciones de vendedores-depósitos, mientras que el swap considera toda combinación de vendedores $nxn$ (y $m\;leq\;n$). Igualmente, si bien el relocate *es* más rápido que el swap, tarda más en encontrar un mínimo local a partir de una solución *s* encontrada mediante $\texttt{worstFit}$, y esto se debe a lo explicado anteriormente de que hay más lugar para mejoras (salvo en los casos donde el relocate no hace nada, y podemos ver también en el apéndice que en esos casos tarda muy poco).\
+
+```{r}
+# greedy acotado tiempos
+library(knitr)
+
+greedy_acotado<- rbind(csv_greedy[1,], csv_greedy[10,], csv_greedy[15,],  csv_greedy[18,])
+# Create a data frame with three columns and six rows
+data <- data.frame(
+  instancia = c("","a-05:100", "b-10:200", "e-10:400", "real"),
+  time_greedy = c(1,greedy_acotado$time_greedy[1], greedy_acotado$time_greedy[2], greedy_acotado$time_greedy[3], greedy_acotado$time_greedy[4]),
+  time_relocate = c(1,greedy_acotado$time_relocate[1], greedy_acotado$time_relocate[2], greedy_acotado$time_relocate[3], greedy_acotado$time_relocate[4]),
+  time_swap = c(1,greedy_acotado$time_swap[1], greedy_acotado$time_swap[2], greedy_acotado$time_swap[3], greedy_acotado$time_swap[4])
+)
+colnames(data)[1] <- ""
+data <- data[-1, ]
+
+# Use knitr to generate a table
+kable(data, row.names = FALSE)
+
+
+```
+
+```{r}
+# wf acotado tiempos
+library(knitr)
+
+wf_acotado <- rbind(csv_wf[1,], csv_wf[10,], csv_wf[15,], csv_wf[18,])
+# Create a data frame with three columns and six rows
+
+
+# Create a data frame with four columns and five rows
+data <- data.frame(
+  instancia = c("", "a-05:100", "b-10:200", "e-10:400", "real"),
+  time_wf = c(1, wf_acotado$time_wf[1], wf_acotado$time_wf[2], wf_acotado$time_wf[3], wf_acotado$time_wf[4]),
+  time_relocate = c(1, wf_acotado$time_relocate[1], wf_acotado$time_relocate[2], wf_acotado$time_relocate[3], wf_acotado$time_relocate[4]),
+  time_swap = c(1, wf_acotado$time_swap[1], wf_acotado$time_swap[2], wf_acotado$time_swap[3], wf_acotado$time_swap[4])
+)
+colnames(data)[1] <- ""
+data <- data[-1, ]
+
+# Use knitr to generate a table
+kable(data, row.names = FALSE)
+
+
+```
+
+
+**Diferencia en la distancia total greedy vs GRASP**
+
+Resulta relevante comparar la mejora que ofrecen una metaheurística a una heurística porque, como se mencionó anteriormente, el GRASP utiliza al *greedy* como heurística golosa de base.
+
+Para obtener los mismos resultados en cada ejecución, seedeamos el randomizador con 1, y obtuvimos lo siguiente:
+
+En líneas generales el GRASP logró encontrar mejores soluciones que la heurística original (o iguales en la primer fila), con excepción de la instancia real. Ambos resultados se explican con el funcionamiento de la metaheurística: al randomizar y obtener varios puntos de partida, luego aplicando búsqueda local podemos obtener varios óptimos locales (potencialmente distintos) y así elegir el mejor de ello, lo cuál nos da más probabilidades de encontrar una mejor solución. Como punto de comparación incluimos al swap, que era un operador decente para aplicar al *greedy*.
+
+Sin embargo, la randomización también puede jugar en contra, y darnos soluciones malas que incluso habiendo aplicado búsqueda local, no llegan a buenos óptimos. Creemos que esta segunda situación es lo que ocurrió para la instancia real, y también por eso al aumentar la cantidad de iteraciones va mejorando un poco, porque quizás algunas randomizaciones no resultan tan malas. De cualquier manera no nos parece que la solución obtenida con el $\texttt{GRASP}$ sea tan mala, ya que 788 km totales suponen aproximadamente 0.7 por vendedor en promedio, y 937 km (el mejor resultado obtenido con $\texttt{GRASP}$) son 0.85 km por cada uno. 
+
+
+```{r}
+# greedy acotado dist total
+library(knitr)
+greedy_acotado<- rbind(csv_greedy[1,], csv_greedy[10,], csv_greedy[15,], csv_greedy[18,])
+csv_grasp <- read.csv("analisis/grasp_analisis.csv", header = TRUE, sep = ",")
+
+# Create a data frame with three columns and six rows
+data <- data.frame(
+  instancia = c("","a-05:100","a-05:100", "a-05:100","a-05:100","b-10:200","b-10:200","b-10:200","b-10:200", "e-10:400","e-10:400","e-10:400","real","real","real"),
+   iteraciones = c(1, csv_grasp$k),
+  dist_greedy = c(1,greedy_acotado$dist_total[1], greedy_acotado$dist_total[1],greedy_acotado$dist_total[1],greedy_acotado$dist_total[1],greedy_acotado$dist_total[2], greedy_acotado$dist_total[2],greedy_acotado$dist_total[2],greedy_acotado$dist_total[2], greedy_acotado$dist_total[3],greedy_acotado$dist_total[3],greedy_acotado$dist_total[3], greedy_acotado$dist_total[4] ,greedy_acotado$dist_total[4],greedy_acotado$dist_total[4]),
+  dist_swap = c(1,greedy_acotado$dist_swap[1], greedy_acotado$dist_swap[1],greedy_acotado$dist_swap[1],greedy_acotado$dist_swap[1],greedy_acotado$dist_swap[2], greedy_acotado$dist_swap[2],greedy_acotado$dist_swap[2],greedy_acotado$dist_swap[2], greedy_acotado$dist_swap[3],greedy_acotado$dist_swap[3],greedy_acotado$dist_swap[3], greedy_acotado$dist_swap[4] ,greedy_acotado$dist_swap[4],greedy_acotado$dist_swap[4]),
+  dist_GRASP = c(1,csv_grasp$dist_grasp)
+)
+colnames(data)[1] <- ""
+data <- data[-1, ]
+
+# Use knitr to generate a table
+kable(data, row.names = FALSE)
+
+
+```
+
+Como era de esperarse el tiempo del *greedy* es mucho mejor, ya que sólo realiza una ejecución de 2 ciclos, mientras que el $\texttt{GRASP}$ debe encuentra *k* soluciones de manera *greedy*, en dónde además debe encontrar los *rcl_size* depósitos más cercanos, y luego aplicar búsqueda local hasta el óptimo para cada iteración.
+
+En nuestro peor caso, la ejecución demoró 720 segundos, o 12 minutos (aunque como mencionamos en consideraciones, creemos que podría realizarse un poco más rápido), y además cuando la cantidad de vendedores es muy grande (en especial en comparación con la cantidad de depósitos), el tiempo aumenta exponencialmente. Además, aunque consigue mejores resultados que el swap casi siempre, lógicamente demora mucho más (el caso que $\texttt{GRASP}$ tarda 12 minutos, swap tarda aproximadamente 1 segundo).
+
+```{r}
+# greedy acotado dist total
+library(knitr)
+greedy_acotado<- rbind(csv_greedy[1,], csv_greedy[10,], csv_greedy[15,], csv_greedy[18,])
+csv_grasp <- read.csv("analisis/grasp_analisis.csv", header = TRUE, sep = ",")
+
+# Create a data frame with three columns and six rows
+data <- data.frame(
+  instancia = c("","a-05:100","a-05:100", "a-05:100","a-05:100","b-10:200","b-10:200","b-10:200","b-10:200", "e-10:400","e-10:400","e-10:400","real","real","real"),
+   iteraciones = c(1, csv_grasp$k),
+  time_greedy = c(1,greedy_acotado$time_greedy[1], greedy_acotado$time_greedy[1],greedy_acotado$time_greedy[1],greedy_acotado$time_greedy[1],greedy_acotado$time_greedy[2], greedy_acotado$time_greedy[2],greedy_acotado$time_greedy[2],greedy_acotado$time_greedy[2], greedy_acotado$time_greedy[3],greedy_acotado$time_greedy[3],greedy_acotado$time_greedy[3], greedy_acotado$time_greedy[4] ,greedy_acotado$time_greedy[4],greedy_acotado$time_greedy[4]),
+  time_swap = c(1,greedy_acotado$time_swap[1], greedy_acotado$time_swap[1],greedy_acotado$time_swap[1],greedy_acotado$time_swap[1],greedy_acotado$time_swap[2], greedy_acotado$time_swap[2],greedy_acotado$time_swap[2],greedy_acotado$time_swap[2], greedy_acotado$time_swap[3],greedy_acotado$time_swap[3],greedy_acotado$time_swap[3], greedy_acotado$time_swap[4] ,greedy_acotado$time_swap[4],greedy_acotado$time_swap[4]),
+  time_GRASP = c(1,csv_grasp$time_grasp)
+)
+colnames(data)[1] <- ""
+data <- data[-1, ]
+
+# Use knitr to generate a table
+kable(data, row.names = FALSE)
+
+
+```
+
+
+# Análisis del caso real
+
+Buscamos responder las siguientes preguntas:
+
+  * ¿Es suficiente la capacidad de la red de depósitos, o es necesario expanidr la misma para poder dar respuesta a todos los vendedores? No creemos que sea necesario expandir la red, ya que observamos que todos los vendedores fueron asignados a los depósitos originales (es decir, no al agregado de penalización) con la heurística *greedy*.
+  * ¿Es posible encontrar una asignación donde los vendedores recorrran una distancia razonable para entregar sus paquetes? Sí, de hecho la encontrada nos parece razonable, ya que como mencionamos anteriormente 788km implica en promedio menos de 1km por vendedor.
+  * ¿Es factible desarrollar una herramienta que nos permita experimentar con distintos escenarios y obtener soluciones de buena calidad en unos pocos minutos? Si bien como explicamos el $\texttt{GRASP}$ no dio malos resultados, en nuestro caso no logró mejorar al *greedy* normal. En cuestiones de tiempo tampoco diríamos que es en tiempo real, pero podría ser útil si se está dispuesto a esperar un poco más (quizás un día). Igualmente, como mencionaos también debería poder afinarse el código para deshacernos de cosas innecesarias como computar los *rcl_size* depósitos más cercanos cada vez que hacemos el *greedy*, y eso debería reducir considerablemente el tiempo.
+
+# Conluciones
+
+A modo de breve resumen, planteamos dos heurísticas muy distintas para resolver el problema GAP de modo ingenuo, y dieron resultados aceptables en distintos casos (el *greedy* para instancias con menor variación de costos, y el $\texttt{WorstFit}$ para mayor variación)
+
+Luego aplicamos dos operadores de búsqueda local, el relocate y el swap. El primero no dio resultados cuando lo aplicamos sobre soluciones encontradas con nuestra heurística *greedy*, pero era de esperarse porque sino esa solución debería haberse elegido primero, por como funciona la heurística. Tampoco sirvió para algunos casos del $\texttt{WorstFit}$, pero para otros fue muy efectivo, otra vez esperable por el funcionamiento del $\texttt{WorstFit}$. El swap resultó el mejor operador para ambos, y por eso luego cuando realizamos el VND con el $\texttt{GRASP}$ elegimos hacerlo en orden swap-relocate.
+
+Finalmente, los resultados obtenidos para algunas instancias con GRASP fueron bastante buenos, dando mejores resultados que el *greedy* y que luego de aplicar el operador swap (que ya establecimos era el único útil para el *greedy*), pero no sirvió en nuestros casos analizados para la instancia real, y además demoró mucho más. Habría que analizar cuánto tiempo se está dispuesto a esperar y cuánto mejor puede ser el resultado obtenido para decidir si vale la pena utilizar el $\texttt{GRASP}$. En el contexto de ThunderPack, si el randomizado ayudara y diera una mejor solución, podemos llegar a ver la metaheurística como una opción viable pero no en tiempo real.
+
+# Apéndice
+
+**Tabla 1 - distancia total con el greedy, y luego de aplicar relocate y swap + mejora relativa del swap**\
+Excluimos la mejora relativa del *greedy* porque en todos casos es 0.\
+```{r}
+#APENDICE
+library(knitr)
+
+# Create a data frame
+data <- data.frame(
+  instancia = c("","a-05:100","a-05:200", "a-10:100","a-10:200","a-20:100","a-20:200","b-05:100","b-05:200","b-10:100","b-10:200","b-20:100", "b-20:200","e-05:200","e-15:900","e-10:400","e-60:900","e-40:1600", "real"),
+  dist_greedy = c(1, csv_greedy$dist_total),
+  dist_relocate = c(1, csv_greedy$dist_relocate),
+  dist_swap = c(1, csv_greedy$dist_swap),
+  mejora_rel_swap = c(1, round((csv_greedy$dist_total-csv_greedy$dist_swap)/csv_greedy$dist_total*100, 2))
+)
+colnames(data)[1] <- ""
+data <- data[-1, ]
+# Use knitr to generate a table
+kable(data, row.names = FALSE)
+```
+
+
+**Tabla 2 - distancia total con el worst fit, y luego de aplicar relocate y swap + mejora relativa del swap y el relocate**
+```{r}
+#APENDICE
+library(knitr)
+
+# Create a data frame
+data <- data.frame(
+  instancia = c("","a-05:100","a-05:200", "a-10:100","a-10:200","a-20:100","a-20:200","b-05:100","b-05:200","b-10:100","b-10:200","b-20:100", "b-20:200","e-05:200","e-15:900","e-10:400","e-60:900","e-40:1600", "real"),
+  dist_wf = c(1, csv_wf$dist_total),
+  dist_relocate = c(1, csv_wf$dist_relocate),
+  mejora_rel_relocate = c(1, round((csv_wf$dist_total-csv_wf$dist_relocate)/csv_wf$dist_total*100, 2)),
+  dist_swap = c(1, csv_wf$dist_swap),
+  mejora_rel_swap = c(1, round((csv_wf$dist_total-csv_wf$dist_swap)/csv_wf$dist_total*100, 2))
+)
+colnames(data)[1] <- ""
+data <- data[-1, ]
+# Use knitr to generate a table
+kable(data, row.names = FALSE)
+```
+
+**Tabla 3 - tiempo de ejecución del greedy, y luego de aplicarle relocate y swap**
+```{r}
+#APENDICE
+library(knitr)
+
+# Create a data frame
+data <- data.frame(
+  instancia = c("","a-05:100","a-05:200", "a-10:100","a-10:200","a-20:100","a-20:200","b-05:100","b-05:200","b-10:100","b-10:200","b-20:100", "b-20:200","e-05:200","e-15:900","e-10:400","e-60:900","e-40:1600", "real"),
+  time_greedy = c(1, csv_greedy$time_greedy),
+  time_relocate = c(1, csv_greedy$time_relocate),
+  time_swap = c(1, csv_greedy$time_swap)
+  #mejora_rel_swap = c(1, round((csv_greedy$dist_total-csv_greedy$dist_swap)/csv_greedy$dist_total*100, 2))
+)
+colnames(data)[1] <- ""
+data <- data[-1, ]
+# Use knitr to generate a table
+kable(data, row.names = FALSE)
+```
+
+**Tabla 4 - tiempo de ejecución del worst fit, y luego de aplicarle relocate y swap**
+```{r}
+#APENDICE
+library(knitr)
+
+# Create a data frame
+data <- data.frame(
+  instancia = c("","a-05:100","a-05:200", "a-10:100","a-10:200","a-20:100","a-20:200","b-05:100","b-05:200","b-10:100","b-10:200","b-20:100", "b-20:200","e-05:200","e-15:900","e-10:400","e-60:900","e-40:1600", "real"),
+  time_wf = c(1, csv_wf$time_wf),
+  time_relocate = c(1, csv_wf$time_relocate),
+  #mejora_rel_relocate = c(1, round((csv_wf$dist_total-csv_wf$dist_relocate)/csv_wf$dist_total*100, 2)),
+  time_swap = c(1, csv_wf$time_swap)
+  #mejora_rel_swap = c(1, round((csv_wf$dist_total-csv_wf$dist_swap)/csv_wf$dist_total*100, 2))
+)
+colnames(data)[1] <- ""
+data <- data[-1, ]
+# Use knitr to generate a table
+kable(data, row.names = FALSE)
+```
+
+
+
+
+
+
+

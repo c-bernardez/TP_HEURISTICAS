@@ -1,6 +1,6 @@
 CC = g++
 CFLAGS = -std=c++17
-SRC = main.cpp gap_instance.cpp gap_solution.cpp greedy_local.cpp worst_fit.cpp
+SRC = main.cpp gap/gap_instance.cpp heuristicas/greedy_local.cpp gap/gap_solution.cpp gap/gap_cost.cpp auxiliares/auxiliares.cpp heuristicas/worst_fit.cpp busq_locales/relocate_ls.cpp busq_locales/swap_ls.cpp metaheuristicas/grasp.cpp
 OBJ = $(SRC:.cpp=.o)
 EXEC = gap_simulator 
 all: $(EXEC)

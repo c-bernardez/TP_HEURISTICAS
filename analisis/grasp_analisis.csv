@@ -1,0 +1,12 @@
+filename,k,dist_grasp,time_grasp
+instances/gap/gap_a/a05100,1,1702,48924
+instances/gap/gap_a/a05100,25,1700,1.10203e+06
+instances/gap/gap_a/a05100,50,1699,1.88174e+06
+instances/gap/gap_a/a05100,100,1698,3.62865e+06
+instances/gap/gap_b/b10200,1,5440,382457
+instances/gap/gap_b/b10200,5,4941,1.9742e+06
+instances/gap/gap_b/b10200,10,4920,4.02583e+06
+instances/gap/gap_b/b10200,25,4920,1.05718e+07
+instances/gap/gap_e/e10400,1,319628,1.70752e+06
+instances/gap/gap_e/e10400,5,273434,7.9847e+06
+instances/gap/gap_e/e10400,10,273434,1.40701e+07

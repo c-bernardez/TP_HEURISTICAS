@@ -7,8 +7,9 @@
 #include<fstream>
 #include<iostream>
 #include<sstream>
-#include "gap_instance.h"
-#include "gap_solution.h"
+#include "../gap/gap_instance.h"
+#include "../gap/gap_solution.h"
+#include "../gap/gap_cost.h"
 
 class greedyLocal
 {
@@ -17,13 +18,16 @@ class greedyLocal
         greedyLocal(gapInstance &instancia);
 
         void solve(); // encuentra el costo total de la asignacion y la asignacion en si
-        int getCosto() const; // devuelve el costo total de la asignacion
+        void calculate();
+        int getCostoFromGreedy() const; // devuelve el costo total de la asignacion
         gapSolution getSolution() const; // devuelve la asignacion vendedor - deposito
+        double getTime() const; // devuelve el tiempo que tarda en ejecutarse 
         
 	private:
         gapInstance _instance; // almacena la instancia
         gapSolution _solution; // almacena la asignacion
         int _costo_asignacion; // almacena el costo total de la asignacion
+        double _tiempo; // almacena el tiempo de cómputo
         
 
 
